@@ -1,232 +1,239 @@
-# 🔌 Geliştirilmiş Akıllı Ev Sistemi - Bağlantı Şeması
+# 🏠 Smart Home Automation System
 
-## 📋 Gerekli Malzemeler
+An advanced IoT-based smart home prototype using ESP8266 NodeMCU and Arduino Uno with real-time web monitoring and control.
 
-### ESP8266 NodeMCU İçin:
-- ESP8266 NodeMCU
-- DHT22 Sıcaklık/Nem Sensörü
-- PIR Hareket Sensörü
-- Yangın Sensörü (Flame Sensor)
-- LDR (Işık Sensörü)
-- Servo Motor (SG90)
-- Röle Modülü
+## 📋 Features
+
+### 🎛️ Control Systems
+- **Relay Control**: Manual and motion-activated modes
+- **LED Control**: Web-based on/off control
+- **Servo Motor**: Manual positioning (0°, 90°, 180°) or automatic light-dependent mode
+- **Smart Fan**: Three operational modes with PWM speed control
+  - Manual mode (web control)
+  - Temperature-based automatic control
+  - Gas sensor-based automatic control
+
+### 📊 Sensors
+- **DHT22**: Temperature and humidity monitoring
+- **PIR Motion**: Movement detection
+- **Flame Sensor**: Fire detection with buzzer alarm
+- **LDR**: Light level measurement
+- **MQ-2**: Gas leak detection
+- **MFRC522 RFID**: Card reader for access control
+
+### 🌐 Web Interface
+- Real-time sensor data updates (every 2 seconds)
+- Responsive design with modern UI
+- Remote control via WiFi
+- Device status monitoring
+
+## 🔧 Hardware Requirements
+
+### ESP8266 NodeMCU Components:
+- ESP8266 NodeMCU board
+- DHT22 Temperature/Humidity sensor
+- PIR Motion sensor
+- Flame sensor
+- LDR (Light Dependent Resistor)
+- SG90 Servo motor
+- Relay module
 - LED
 - Buzzer
-- Direnç (10kΩ, 220Ω)
+- Resistors (10kΩ, 220Ω)
 
-### Arduino Uno İçin:
+### Arduino Uno Components:
 - Arduino Uno R3
-- MFRC522 RFID Okuyucu Modülü
-- MQ-2 Gaz Sensörü Modülü
-- DC Fan Motor
-- L293D Motor Sürücü (veya transistör BC547)
-- Direnç (1kΩ)
+- MFRC522 RFID reader module
+- MQ-2 Gas sensor module
+- DC Fan motor
+- L293D Motor driver (or BC547 transistor)
+- Resistors (1kΩ, 2kΩ for voltage divider)
 
----
+## 📦 Software Requirements
 
-## 🔗 ESP8266 NodeMCU Bağlantıları
-
-### DHT22 Sıcaklık/Nem Sensörü
-```
-DHT22 VCC    → 3.3V (ESP8266)
-DHT22 GND    → GND (ESP8266)
-DHT22 DATA   → D2 (GPIO4)
-```
-
-### PIR Hareket Sensörü
-```
-PIR VCC      → 5V (ESP8266 VIN)
-PIR GND      → GND (ESP8266)
-PIR OUT      → D5 (GPIO14)
-```
-
-### Yangın Sensörü (Flame Sensor)
-```
-FLAME VCC    → 3.3V (ESP8266)
-FLAME GND    → GND (ESP8266)
-FLAME DO     → D7 (GPIO12)
-```
-
-### LDR (Işık Sensörü)
-```
-LDR bir ucu  → 3.3V (ESP8266)
-LDR diğer uç → A0 (ESP8266) ve 10kΩ direnç → GND
-```
-
-### Servo Motor
-```
-SERVO VCC    → 5V (ESP8266 VIN veya harici 5V)
-SERVO GND    → GND (ESP8266)
-SERVO Signal → D4 (GPIO2)
-```
-
-### Röle Modülü
-```
-RÖLE VCC     → 5V (ESP8266 VIN)
-RÖLE GND     → GND (ESP8266)
-RÖLE IN      → D0 (GPIO16)
-```
-
-### LED
-```
-LED (+)      → 220Ω direnç → D1 (GPIO5)
-LED (-)      → GND (ESP8266)
-```
-
-### Buzzer
-```
-BUZZER (+)   → D8 (GPIO15)
-BUZZER (-)   → GND (ESP8266)
-```
-
-### Arduino Uno ile Haberleşme
-```
-ESP8266 TX   → Arduino RX (Pin 0)
-ESP8266 RX   → Arduino TX (Pin 1)
-ESP8266 GND  → Arduino GND (ORTAK GND ÖNEMLİ!)
-```
-
----
-
-## 🔗 Arduino Uno Bağlantıları
-
-### MFRC522 RFID Okuyucu (SPI Bağlantısı)
-```
-RFID VCC     → 3.3V (Arduino)
-RFID GND     → GND (Arduino)
-RFID RST     → Pin 9 (Arduino)
-RFID SDA/SS  → Pin 10 (Arduino)
-RFID MOSI    → Pin 11 (Arduino)
-RFID MISO    → Pin 12 (Arduino)
-RFID SCK     → Pin 13 (Arduino)
-```
-
-### MQ-2 Gaz Sensörü
-```
-MQ-2 VCC     → 5V (Arduino)
-MQ-2 GND     → GND (Arduino)
-MQ-2 AOUT    → A0 (Arduino)
-```
-
-### DC Fan Motor (L293D Motor Sürücü ile)
-```
-L293D Pin 1 (Enable)   → Pin 3 (Arduino PWM)
-L293D Pin 2 (Input 1)  → 5V (Arduino)
-L293D Pin 3 (Output 1) → Fan (+)
-L293D Pin 4-5 (GND)    → GND (Arduino)
-L293D Pin 6 (Output 2) → Fan (-)
-L293D Pin 7 (Input 2)  → GND (Arduino)
-L293D Pin 8 (VCC2)     → Harici 5-12V (Fan gücü)
-L293D Pin 16 (VCC1)    → 5V (Arduino)
-```
-
-**Alternatif - Transistör BC547 ile (Basit Çözüm):**
-```
-Arduino Pin 3 → 1kΩ direnç → BC547 Base
-BC547 Collector → Fan (-)
-BC547 Emitter → GND
-Fan (+) → Harici 5-12V
-```
-
-### ESP8266 ile Haberleşme
-```
-Arduino TX (Pin 1)  → ESP8266 RX
-Arduino RX (Pin 0)  → ESP8266 TX
-Arduino GND         → ESP8266 GND (ORTAK GND!)
-```
-
----
-
-## ⚠️ ÖNEMLİ NOTLAR
-
-### 1. Güç Kaynağı
-- **ESP8266**: USB'den beslenmeli (5V) veya harici 5V adaptör
-- **Arduino Uno**: USB'den beslenmeli (5V) veya harici 7-12V adaptör
-- **Ortak GND**: ESP8266 ve Arduino'nun GND'leri mutlaka birbirine bağlanmalı!
-
-### 2. Voltaj Seviyeleri
-- ESP8266 pinleri **3.3V** mantık seviyesinde çalışır
-- Arduino Uno pinleri **5V** mantık seviyesinde çalışır
-- **Seri haberleşme için**: ESP8266 RX pinine bir voltaj bölücü (1kΩ + 2kΩ direnç) kullanın veya mantık seviyesi çevirici kullanın
-
-### 3. Seri Haberleşme Voltaj Uyumu
-```
-Arduino TX (5V) → 1kΩ direnç → ESP8266 RX
-                ↓
-             2kΩ direnç
-                ↓
-               GND
-
-ESP8266 TX (3.3V) → Arduino RX (Direnç gerekmez, Arduino 3.3V'u okuyabilir)
-```
-
-### 4. Fan Motor
-- DC motor yüksek akım çeker, Arduino'dan doğrudan bağlamayın
-- Mutlaka motor sürücü veya transistör kullanın
-- Harici güç kaynağı kullanılmalı (5-12V, motorun özelliklerine göre)
-
-### 5. RFID Modülü
-- RFID modülü 3.3V ile çalışır, 5V vermeyın!
-- SPI bağlantılarını doğru yapın
-- SS pinini (Pin 10) başka amaçla kullanmayın
-
-### 6. Servo Motor
-- Servo motor yüksek akım çeker
-- Harici 5V güç kaynağı kullanmanız önerilir
-- GND'ler ortak olmalı
-
-### 7. Web Arayüz Erişimi
-- ESP8266'nın IP adresini seri monitörden okuyun
-- Tarayıcıda bu IP adresini yazarak arayüze erişin
-- Örnek: http://192.168.1.100
-
----
-
-## 🎯 Çalışma Mantığı
-
-### Fan Modları:
-1. **Manuel Mod (0)**: Web arayüzden açma/kapama
-2. **Sıcaklık Modu (1)**: 
-   - 28°C altında: Fan kapalı
-   - 28-30°C: Düşük hız
-   - 30-33°C: Orta hız
-   - 33°C+: Yüksek hız
-3. **Gaz Sensörü Modu (2)**:
-   - 400 altında: Fan kapalı
-   - 400-500: Düşük hız
-   - 500-600: Orta hız
-   - 600+: Yüksek hız
-
-### Veri Akışı:
-```
-Arduino → (Gaz, RFID, Fan Durumu) → ESP8266
-ESP8266 → (Fan Modu, Fan Komutu, Sıcaklık) → Arduino
-ESP8266 → (Tüm Veriler) → Web Arayüzü
-```
-
----
-
-## 🔧 Test Adımları
-
-1. **Arduino Testi**: Arduino kodunu yükleyin, seri monitörden veri akışını kontrol edin
-2. **ESP8266 Testi**: ESP8266 kodunu yükleyin, WiFi'ye bağlanıp IP almasını bekleyin
-3. **Haberleşme Testi**: İki kart arasında veri alışverişini kontrol edin
-4. **Web Arayüz Testi**: Tarayıcıdan IP adresine erişin, tüm fonksiyonları test edin
-5. **Sensör Testleri**: Her sensörü tek tek test edin
-6. **Fan Modları Testi**: Her fan modunu test edin
-
----
-
-## 📚 Kütüphane Gereksinimleri
-
-### ESP8266 için:
-- ESP8266WiFi (Arduino IDE ile gelir)
-- ESP8266WebServer (Arduino IDE ile gelir)
+### Arduino IDE Libraries:
+**For ESP8266:**
+- ESP8266WiFi (built-in)
+- ESP8266WebServer (built-in)
 - DHT sensor library (Adafruit)
-- Servo (Arduino IDE ile gelir)
+- Servo (built-in)
 
-### Arduino Uno için:
-- MFRC522 (RFID kütüphanesi)
-- SPI (Arduino IDE ile gelir)
+**For Arduino Uno:**
+- MFRC522 (RFID library)
+- SPI (built-in)
 
-**Kütüphane Kurulumu**: Arduino IDE → Tools → Manage Libraries → Kütüphane adını arayın ve yükleyin
+### Installation:
+```
+Arduino IDE → Tools → Manage Libraries → Search and install required libraries
+```
+
+## 🔌 Wiring Connections
+
+### ESP8266 NodeMCU Pinout:
+| Component | ESP8266 Pin | GPIO |
+|-----------|-------------|------|
+| DHT22 Data | D2 | GPIO4 |
+| PIR Motion | D5 | GPIO14 |
+| Flame Sensor | D7 | GPIO12 |
+| Buzzer | D8 | GPIO15 |
+| Relay | D0 | GPIO16 |
+| LED | D1 | GPIO5 |
+| Servo | D4 | GPIO2 |
+| LDR | A0 | ADC0 |
+
+### Arduino Uno Pinout:
+| Component | Arduino Pin |
+|-----------|-------------|
+| RFID RST | Pin 9 |
+| RFID SS | Pin 10 |
+| RFID MOSI | Pin 11 |
+| RFID MISO | Pin 12 |
+| RFID SCK | Pin 13 |
+| MQ-2 Gas Sensor | A0 |
+| Fan Motor (PWM) | Pin 3 |
+
+### Serial Communication:
+```
+ESP8266 TX → Arduino RX (Pin 0)
+ESP8266 RX → Voltage Divider → Arduino TX (Pin 1)
+ESP8266 GND ⟷ Arduino GND (COMMON GROUND!)
+```
+
+### ⚠️ Voltage Divider (Important!):
+```
+Arduino TX (5V) → 1kΩ resistor → ESP8266 RX (3.3V)
+                                ↓
+                            2kΩ resistor
+                                ↓
+                               GND
+```
+
+## 🚀 Setup Instructions
+
+### 1. Hardware Assembly
+- Connect all components according to the wiring diagram
+- Ensure common ground between ESP8266 and Arduino
+- Use voltage divider for serial communication
+- Connect motor driver for fan control
+
+### 2. Software Configuration
+**ESP8266 Code:**
+```cpp
+const char* ssid = "YOUR_WIFI_SSID";
+const char* password = "YOUR_WIFI_PASSWORD";
+```
+
+**Upload:**
+- Upload ESP8266 code to NodeMCU
+- Upload Arduino code to Uno
+- Open Serial Monitor to see IP address
+
+### 3. Access Web Interface
+- Connect to the same WiFi network
+- Open browser and navigate to ESP8266's IP address
+- Example: `http://192.168.1.100`
+
+## 🎯 Operating Modes
+
+### Fan Control Modes:
+1. **Manual Mode**: Direct on/off control from web interface
+2. **Temperature Mode**: Automatic control based on temperature
+   - < 28°C: OFF
+   - 28-30°C: Low speed (PWM 100)
+   - 30-33°C: Medium speed (PWM 180)
+   - > 33°C: High speed (PWM 255)
+3. **Gas Sensor Mode**: Automatic control based on gas level
+   - < 400: OFF
+   - 400-500: Low speed
+   - 500-600: Medium speed
+   - > 600: High speed
+
+### Relay Modes:
+- **Remote Control**: Manual on/off via web interface
+- **Motion Mode**: Automatic activation on motion detection
+
+### Servo Modes:
+- **Remote Control**: Manual positioning (0°, 90°, 180°)
+- **Light-Dependent**: Automatic positioning based on LDR reading
+
+## 📡 Communication Protocol
+
+### Arduino → ESP8266:
+```
+Format: G:XXX,R:CARDID,F:X
+G: Gas level (0-1023)
+R: RFID card ID (hex)
+F: Fan state (0/1)
+```
+
+### ESP8266 → Arduino:
+```
+Format: M:X,F:X,T:XX.X
+M: Fan mode (0/1/2)
+F: Fan command (0/1)
+T: Temperature value
+```
+
+## 🔍 Testing
+
+1. **Power Up**: Connect both boards to USB power
+2. **Serial Monitor**: Verify WiFi connection and IP address
+3. **Web Access**: Open IP address in browser
+4. **Sensor Test**: Check all sensor readings update
+5. **Control Test**: Test all buttons and mode switches
+6. **RFID Test**: Scan a card and verify on web interface
+7. **Fan Modes**: Test all three fan operation modes
+
+## ⚡ Safety Notes
+
+- ⚠️ Never connect 5V to ESP8266 GPIO pins
+- ⚠️ Use voltage divider for ESP8266 RX pin
+- ⚠️ RFID module requires 3.3V (not 5V!)
+- ⚠️ Always use motor driver for fan (never direct connection)
+- ⚠️ Ensure common ground between all components
+- ⚠️ Use external power for servo and fan motors
+
+## 🐛 Troubleshooting
+
+**WiFi Not Connecting:**
+- Check SSID and password
+- Ensure 2.4GHz WiFi (ESP8266 doesn't support 5GHz)
+
+**No Serial Communication:**
+- Verify TX/RX connections
+- Check voltage divider circuit
+- Ensure common ground
+
+**RFID Not Working:**
+- Verify SPI connections
+- Check 3.3V power supply
+- Ensure proper SS pin (Pin 10)
+
+**Fan Not Running:**
+- Check motor driver connections
+- Verify PWM pin connection
+- Test with external power supply
+
+## 📸 Screenshots
+
+The web interface includes:
+- Real-time sensor monitoring
+- Device control buttons
+- Mode switching options
+- Status indicators
+- RFID card display
+- Gas level monitoring
+
+## 📄 License
+
+This project is open source and available for educational purposes.
+
+## 👥 Contributing
+
+Feel free to fork this project and submit pull requests for improvements.
+
+## 📧 Contact
+
+For questions and support, please open an issue in the repository.
+
+---
