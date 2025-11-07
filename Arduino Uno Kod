@@ -1,0 +1,178 @@
+#include <SPI.h>
+#include <MFRC522.h>
+
+// Pin Tanımlamaları
+#define RST_PIN 9        // RFID Reset Pin
+#define SS_PIN 10        // RFID SS Pin
+#define GAS_SENSOR A0    // MQ-2 Gaz Sensörü (Analog)
+#define FAN_PIN 3        // Fan Motor (PWM Pin)
+
+// RFID
+MFRC522 rfid(SS_PIN, RST_PIN);
+
+// Global Değişkenler
+int gasLevel = 0;
+String lastRFID = "Beklemede";
+int fanMode = 0;        // 0: Manuel, 1: Sıcaklık, 2: Gaz
+bool fanState = false;
+float temperature = 0.0;
+
+// Eşik Değerleri
+const int GAS_THRESHOLD = 400;      // Gaz sensörü eşiği
+const float TEMP_THRESHOLD = 28.0;  // Sıcaklık eşiği (°C)
+const int FAN_SPEED_LOW = 100;      // Düşük hız
+const int FAN_SPEED_MEDIUM = 180;   // Orta hız
+const int FAN_SPEED_HIGH = 255;     // Yüksek hız
+
+void setup() {
+  Serial.begin(9600);  // ESP8266 ile haberleşme
+  
+  // Pin Modları
+  pinMode(FAN_PIN, OUTPUT);
+  pinMode(GAS_SENSOR, INPUT);
+  
+  // RFID Başlat
+  SPI.begin();
+  rfid.PCD_Init();
+  
+  // Başlangıç Durumu
+  analogWrite(FAN_PIN, 0);
+}
+
+unsigned long lastSend = 0;
+unsigned long lastRFIDCheck = 0;
+const unsigned long SEND_INTERVAL = 500;
+const unsigned long RFID_CHECK_INTERVAL = 100;
+
+void loop() {
+  unsigned long currentMillis = millis();
+  
+  // ESP8266'dan Komut Al
+  if (Serial.available() > 0) {
+    String data = Serial.readStringUntil('\n');
+    parseESPCommand(data);
+  }
+  
+  // Gaz Sensörünü Oku
+  gasLevel = analogRead(GAS_SENSOR);
+  
+  // RFID Kartı Kontrol Et
+  if (currentMillis - lastRFIDCheck >= RFID_CHECK_INTERVAL) {
+    lastRFIDCheck = currentMillis;
+    checkRFID();
+  }
+  
+  // Fan Kontrolü
+  controlFan();
+  
+  // ESP8266'ya Veri Gönder
+  if (currentMillis - lastSend >= SEND_INTERVAL) {
+    lastSend = currentMillis;
+    sendDataToESP();
+  }
+}
+
+// RFID Kart Okuma
+void checkRFID() {
+  // Yeni kart var mı kontrol et
+  if (!rfid.PICC_IsNewCardPresent()) {
+    return;
+  }
+  
+  // Kartı oku
+  if (!rfid.PICC_ReadCardSerial()) {
+    return;
+  }
+  
+  // Kart ID'sini Oku
+  String cardID = "";
+  for (byte i = 0; i < rfid.uid.size; i++) {
+    cardID += String(rfid.uid.uidByte[i] < 0x10 ? "0" : "");
+    cardID += String(rfid.uid.uidByte[i], HEX);
+  }
+  cardID.toUpperCase();
+  
+  lastRFID = cardID;
+  
+  // Kartı Durdur
+  rfid.PICC_HaltA();
+  rfid.PCD_StopCrypto1();
+}
+
+// ESP8266'dan Komut Parse Et
+void parseESPCommand(String data) {
+  // Format: M:0,F:1,T:25.5
+  int modeIndex = data.indexOf("M:");
+  int fanIndex = data.indexOf("F:");
+  int tempIndex = data.indexOf("T:");
+  
+  if (modeIndex >= 0) {
+    int commaIndex = data.indexOf(',', modeIndex);
+    fanMode = data.substring(modeIndex + 2, commaIndex).toInt();
+  }
+  
+  if (fanIndex >= 0) {
+    int commaIndex = data.indexOf(',', fanIndex);
+    if (commaIndex < 0) commaIndex = data.length();
+    fanState = data.substring(fanIndex + 2, commaIndex).toInt() == 1;
+  }
+  
+  if (tempIndex >= 0) {
+    temperature = data.substring(tempIndex + 2).toFloat();
+  }
+}
+
+// Fan Kontrolü
+void controlFan() {
+  int fanSpeed = 0;
+  
+  switch (fanMode) {
+    case 0: // Manuel Mod
+      if (fanState) {
+        fanSpeed = FAN_SPEED_HIGH;
+      } else {
+        fanSpeed = 0;
+      }
+      break;
+      
+    case 1: // Sıcaklık Modu
+      if (temperature >= TEMP_THRESHOLD + 5) {
+        fanSpeed = FAN_SPEED_HIGH;
+        fanState = true;
+      } else if (temperature >= TEMP_THRESHOLD + 2) {
+        fanSpeed = FAN_SPEED_MEDIUM;
+        fanState = true;
+      } else if (temperature >= TEMP_THRESHOLD) {
+        fanSpeed = FAN_SPEED_LOW;
+        fanState = true;
+      } else {
+        fanSpeed = 0;
+        fanState = false;
+      }
+      break;
+      
+    case 2: // Gaz Sensörü Modu
+      if (gasLevel >= GAS_THRESHOLD + 200) {
+        fanSpeed = FAN_SPEED_HIGH;
+        fanState = true;
+      } else if (gasLevel >= GAS_THRESHOLD + 100) {
+        fanSpeed = FAN_SPEED_MEDIUM;
+        fanState = true;
+      } else if (gasLevel >= GAS_THRESHOLD) {
+        fanSpeed = FAN_SPEED_LOW;
+        fanState = true;
+      } else {
+        fanSpeed = 0;
+        fanState = false;
+      }
+      break;
+  }
+  
+  analogWrite(FAN_PIN, fanSpeed);
+}
+
+// ESP8266'ya Veri Gönder
+void sendDataToESP() {
+  String data = "G:" + String(gasLevel) + ",R:" + lastRFID + ",F:" + String(fanState ? 1 : 0) + "\n";
+  Serial.print(data);
+}
