@@ -1,0 +1,330 @@
+#include <ESP8266WiFi.h>
+#include <ESP8266WebServer.h>
+#include <DHT.h>
+#include <Servo.h>
+
+// WiFi Ayarları
+const char* ssid = "**************";
+const char* password = "******";
+
+// Pin Tanımlamaları
+#define RELAY_PIN 16    // Röle (D0 → GPIO16)
+#define LED1_PIN 5      // LED1 (D1 → GPIO5)
+#define DHT_PIN 4       // Sıcaklık ve Nem Sensörü (D2 → GPIO4)
+#define MOTION_PIN 14   // Hareket Sensörü (D5 → GPIO14)
+#define FIRE_PIN 12     // Yangın Sensörü (D7 → GPIO12)
+#define BUZZER_PIN 15   // Buzzer (D8 → GPIO15)
+#define LDR_PIN A0      // LDR (A0)
+#define SERVO_PIN 2     // Servo Motor (D4 → GPIO2)
+
+// DHT Sensörü Ayarları
+#define DHTTYPE DHT22
+DHT dht(DHT_PIN, DHTTYPE);
+
+// Servo Motor
+Servo servo;
+
+// Web Server
+ESP8266WebServer server(80);
+
+// Global Değişkenler
+bool relayState = false;
+bool relayMode = false;
+bool led1State = false;
+bool servoMode = false;
+float temperature = 0.0;
+float humidity = 0.0;
+bool motionDetected = false;
+bool fireDetected = false;
+int lightLevel = 0;
+
+// Arduino Uno'dan Gelen Veriler
+int gasLevel = 0;
+String rfidCard = "Beklemede";
+int fanMode = 0; // 0: Manuel, 1: Sıcaklık, 2: Gaz
+bool fanState = false;
+
+void setup() {
+  Serial.begin(9600); // Arduino Uno ile haberleşme için
+  
+  // Pin Modları
+  pinMode(RELAY_PIN, OUTPUT);
+  pinMode(LED1_PIN, OUTPUT);
+  pinMode(MOTION_PIN, INPUT);
+  pinMode(FIRE_PIN, INPUT);
+  pinMode(BUZZER_PIN, OUTPUT);
+  
+  // Servo Başlat
+  servo.attach(SERVO_PIN);
+  servo.write(0);
+  
+  // Başlangıç Durumları
+  digitalWrite(RELAY_PIN, LOW);
+  digitalWrite(LED1_PIN, LOW);
+  digitalWrite(BUZZER_PIN, LOW);
+  
+  // DHT Başlat
+  dht.begin();
+  
+  // WiFi Bağlantısı
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+  }
+  
+  // Web Server Endpoints
+  server.on("/", handleRoot);
+  server.on("/toggleRelay", toggleRelay);
+  server.on("/toggleLED1", toggleLED1);
+  server.on("/setRelayMode", setRelayMode);
+  server.on("/setServoMode", setServoMode);
+  server.on("/setServoPosition", HTTP_POST, handleSetServoPosition);
+  server.on("/setFanMode", setFanMode);
+  server.on("/toggleFan", toggleFan);
+  server.on("/getData", sendData);
+  
+  server.begin();
+}
+
+unsigned long lastSensorUpdate = 0;
+unsigned long lastClientUpdate = 0;
+unsigned long lastSerialSend = 0;
+const unsigned long SENSOR_UPDATE_INTERVAL = 2000;
+const unsigned long CLIENT_UPDATE_INTERVAL = 100;
+const unsigned long SERIAL_SEND_INTERVAL = 500;
+
+void loop() {
+  unsigned long currentMillis = millis();
+  
+  // Arduino'dan Veri Al
+  if (Serial.available() > 0) {
+    String data = Serial.readStringUntil('\n');
+    parseArduinoData(data);
+  }
+  
+  // Arduino'ya Komut Gönder
+  if (currentMillis - lastSerialSend >= SERIAL_SEND_INTERVAL) {
+    lastSerialSend = currentMillis;
+    sendCommandToArduino();
+  }
+  
+  // Sensör Verilerini Güncelle
+  if (currentMillis - lastSensorUpdate >= SENSOR_UPDATE_INTERVAL) {
+    lastSensorUpdate = currentMillis;
+    
+    motionDetected = digitalRead(MOTION_PIN);
+    fireDetected = digitalRead(FIRE_PIN) == HIGH;
+    temperature = dht.readTemperature();
+    humidity = dht.readHumidity();
+    lightLevel = analogRead(LDR_PIN);
+    
+    // Yangın Alarmı
+    if (fireDetected) {
+      digitalWrite(BUZZER_PIN, HIGH);
+    } else {
+      digitalWrite(BUZZER_PIN, LOW);
+    }
+    
+    // Röle Hareket Modu
+    if (relayMode) {
+      digitalWrite(RELAY_PIN, motionDetected ? HIGH : LOW);
+    }
+    
+    // Servo Işık Modu
+    if (servoMode) {
+      if (lightLevel >= 500 && lightLevel < 600) {
+        servo.write(30);
+      } else if (lightLevel >= 600 && lightLevel < 700) {
+        servo.write(60);
+      } else if (lightLevel >= 700 && lightLevel < 800) {
+        servo.write(90);
+      } else if (lightLevel >= 800) {
+        servo.write(120);
+      } else {
+        servo.write(0);
+      }
+    }
+  }
+  
+  // Web Server İşle
+  if (currentMillis - lastClientUpdate >= CLIENT_UPDATE_INTERVAL) {
+    lastClientUpdate = currentMillis;
+    server.handleClient();
+  }
+}
+
+// Arduino'dan Gelen Veriyi Parse Et
+void parseArduinoData(String data) {
+  // Format: G:300,R:1A2B3C4D,F:1
+  int gasIndex = data.indexOf("G:");
+  int rfidIndex = data.indexOf("R:");
+  int fanIndex = data.indexOf("F:");
+  
+  if (gasIndex >= 0) {
+    int commaIndex = data.indexOf(',', gasIndex);
+    gasLevel = data.substring(gasIndex + 2, commaIndex).toInt();
+  }
+  
+  if (rfidIndex >= 0) {
+    int commaIndex = data.indexOf(',', rfidIndex);
+    if (commaIndex < 0) commaIndex = data.length();
+    rfidCard = data.substring(rfidIndex + 2, commaIndex);
+  }
+  
+  if (fanIndex >= 0) {
+    fanState = data.substring(fanIndex + 2).toInt() == 1;
+  }
+}
+
+// Arduino'ya Komut Gönder
+void sendCommandToArduino() {
+  String cmd = "M:" + String(fanMode) + ",F:" + String(fanState ? 1 : 0) + ",T:" + String(temperature) + "\n";
+  Serial.print(cmd);
+}
+
+// Web Sayfası
+void handleRoot() {
+  String html = "<html><head><meta charset='UTF-8'>";
+  html += "<style>body{font-family:Arial;margin:20px;background:#f0f0f0}";
+  html += ".container{background:white;padding:20px;border-radius:10px;max-width:800px;margin:auto}";
+  html += "button{padding:10px 20px;margin:5px;cursor:pointer;border:none;border-radius:5px;background:#4CAF50;color:white}";
+  html += "button:disabled{background:#ccc;cursor:not-allowed}";
+  html += ".status{padding:10px;margin:10px 0;border-left:4px solid #4CAF50;background:#e8f5e9}";
+  html += ".sensor{display:inline-block;margin:10px;padding:15px;background:#e3f2fd;border-radius:5px}";
+  html += "h1{color:#333}h3{color:#666;border-bottom:2px solid #4CAF50;padding-bottom:5px}</style>";
+  html += "<script>setInterval(()=>{fetch('/getData').then(r=>r.json()).then(d=>{";
+  html += "document.getElementById('temp').innerText=d.temperature+'\u00b0C';";
+  html += "document.getElementById('hum').innerText=d.humidity+'%';";
+  html += "document.getElementById('motion').innerText=d.motion?'Var':'Yok';";
+  html += "document.getElementById('fire').innerText=d.fire?'Var':'Yok';";
+  html += "document.getElementById('light').innerText=d.light;";
+  html += "document.getElementById('gas').innerText=d.gas;";
+  html += "document.getElementById('rfid').innerText=d.rfid;";
+  html += "document.getElementById('fanStatus').innerText=d.fanState?'Açık':'Kapalı';";
+  html += "});},2000);</script></head><body><div class='container'>";
+  html += "<h1>🏠 Akıllı Ev Sistemi</h1>";
+  
+  // Röle Kontrolü
+  html += "<h3>💡 Röle Kontrolü</h3>";
+  html += "<div class='status'>Durum: " + String(relayState ? "Açık" : "Kapalı") + "</div>";
+  if (!relayMode) {
+    html += "<form action='/toggleRelay' method='post'><button type='submit'>Röleyi Değiştir</button></form>";
+  } else {
+    html += "<button disabled>Röleyi Değiştir</button>";
+  }
+  html += "<div class='status'>Mod: " + String(relayMode ? "Hareket Modu" : "Uzaktan Kontrol") + "</div>";
+  html += "<form action='/setRelayMode' method='post'><button type='submit'>Modu Değiştir</button></form>";
+  
+  // LED Kontrolü
+  html += "<h3>💡 LED Kontrolü</h3>";
+  html += "<div class='status'>Durum: " + String(led1State ? "Açık" : "Kapalı") + "</div>";
+  html += "<form action='/toggleLED1' method='post'><button type='submit'>LED'i Değiştir</button></form>";
+  
+  // Fan Kontrolü
+  html += "<h3>🌀 Fan Kontrolü</h3>";
+  html += "<div class='status'>Durum: <span id='fanStatus'>" + String(fanState ? "Açık" : "Kapalı") + "</span></div>";
+  String fanModeText[] = {"Manuel", "Sıcaklık", "Gaz Sensörü"};
+  html += "<div class='status'>Mod: " + fanModeText[fanMode] + "</div>";
+  html += "<form action='/setFanMode' method='post'>";
+  html += "<button type='submit' name='mode' value='0'>Manuel</button>";
+  html += "<button type='submit' name='mode' value='1'>Sıcaklık</button>";
+  html += "<button type='submit' name='mode' value='2'>Gaz Sensörü</button></form>";
+  if (fanMode == 0) {
+    html += "<form action='/toggleFan' method='post'><button type='submit'>Fan Aç/Kapat</button></form>";
+  } else {
+    html += "<button disabled>Fan Aç/Kapat (Otomatik Modda)</button>";
+  }
+  
+  // Servo Kontrolü
+  html += "<h3>🔧 Servo Motor</h3>";
+  html += "<div class='status'>Mod: " + String(servoMode ? "Işığa Bağlı" : "Uzaktan Kontrol") + "</div>";
+  html += "<form action='/setServoMode' method='post'><button type='submit'>Modu Değiştir</button></form>";
+  if (!servoMode) {
+    html += "<form action='/setServoPosition' method='post'>";
+    html += "<button type='submit' name='position' value='0'>0°</button>";
+    html += "<button type='submit' name='position' value='90'>90°</button>";
+    html += "<button type='submit' name='position' value='180'>180°</button></form>";
+  } else {
+    html += "<button disabled>0°</button><button disabled>90°</button><button disabled>180°</button>";
+  }
+  
+  // Sensör Verileri
+  html += "<h3>📊 Sensör Verileri</h3>";
+  html += "<div class='sensor'>🌡️ Sıcaklık: <span id='temp'>...</span></div>";
+  html += "<div class='sensor'>💧 Nem: <span id='hum'>...</span></div>";
+  html += "<div class='sensor'>🚶 Hareket: <span id='motion'>...</span></div>";
+  html += "<div class='sensor'>🔥 Yangın: <span id='fire'>...</span></div>";
+  html += "<div class='sensor'>💡 Işık: <span id='light'>...</span></div>";
+  html += "<div class='sensor'>☁️ Gaz: <span id='gas'>...</span></div>";
+  html += "<div class='sensor'>🔑 RFID: <span id='rfid'>...</span></div>";
+  
+  html += "</div></body></html>";
+  server.send(200, "text/html", html);
+}
+
+void toggleRelay() {
+  relayState = !relayState;
+  digitalWrite(RELAY_PIN, relayState ? HIGH : LOW);
+  server.sendHeader("Location", "/");
+  server.send(303);
+}
+
+void toggleLED1() {
+  led1State = !led1State;
+  digitalWrite(LED1_PIN, led1State ? HIGH : LOW);
+  server.sendHeader("Location", "/");
+  server.send(303);
+}
+
+void setRelayMode() {
+  relayMode = !relayMode;
+  server.sendHeader("Location", "/");
+  server.send(303);
+}
+
+void setServoMode() {
+  servoMode = !servoMode;
+  server.sendHeader("Location", "/");
+  server.send(303);
+}
+
+void handleSetServoPosition() {
+  if (server.hasArg("position")) {
+    int position = server.arg("position").toInt();
+    if (position == 0 || position == 90 || position == 180) {
+      servo.write(position);
+    }
+  }
+  server.sendHeader("Location", "/");
+  server.send(303);
+}
+
+void setFanMode() {
+  if (server.hasArg("mode")) {
+    fanMode = server.arg("mode").toInt();
+  }
+  server.sendHeader("Location", "/");
+  server.send(303);
+}
+
+void toggleFan() {
+  if (fanMode == 0) {
+    fanState = !fanState;
+  }
+  server.sendHeader("Location", "/");
+  server.send(303);
+}
+
+void sendData() {
+  String json = "{";
+  json += "\"temperature\":" + String(temperature) + ",";
+  json += "\"humidity\":" + String(humidity) + ",";
+  json += "\"motion\":" + String(motionDetected) + ",";
+  json += "\"fire\":" + String(fireDetected) + ",";
+  json += "\"light\":" + String(lightLevel) + ",";
+  json += "\"gas\":" + String(gasLevel) + ",";
+  json += "\"rfid\":\"" + rfidCard + "\",";
+  json += "\"fanState\":" + String(fanState);
+  json += "}";
+  server.send(200, "application/json", json);
+}
